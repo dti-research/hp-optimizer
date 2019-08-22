@@ -56,7 +56,6 @@ def run_model(hyperparams, iteration):
 
     # Get all the current hyperparameter values
     hyperparams['timesteps_per_batch'] = hyperparams['timesteps_per_batch']
-    print("\ntimesteps_per_batch: {} \n".format(hyperparams['timesteps_per_batch']))
     for parameter_name in ['vf_stepsize', 'max_kl', 'gamma', 'lam']:
         hyperparams[parameter_name] = float(hyperparams[parameter_name])
 
@@ -107,8 +106,8 @@ if __name__ == "__main__":
 		max_evals = max_evaluations, 
 		trials = bayes_trials)
     
-    print(bayes_trials)
-    print(best)
+    print("\ntrials info: {}\n".format(bayes_trials.trials)) #annoyingly enough prints out index for timesteps_per_batch
+    print("\nbest model: {}".format(best))
 
 
 
