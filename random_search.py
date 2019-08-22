@@ -3,6 +3,7 @@ import numpy as np
 import random
 import gym
 import math
+import time
 import matplotlib.pyplot as plt
 from stable_baselines.common.policies import MlpPolicy
 from stable_baselines.common.vec_env import DummyVecEnv
@@ -25,60 +26,68 @@ space = {
         }
 
 
-"""
-def sample(space):
-    gamma, lamda, max_kl, hid_size, num_hid_layers, batch_size, vf_stepsize  = ([] for i in range(7))
+
+def sample(space, num_configs):
+    timesteps_per_batch, vf_stepsize, max_kl, gamma, lam = ([] for i in range(5))
     for i in range(num_configs):
         sample = hyperopt.pyll.stochastic.sample(space)
-        gamma.append(sample['gamma'])
-        lamda.append(sample['lamda'])
-        max_kl.append(sample['max_kl'])
-        hid_size.append(sample['num_hid_layers']['hid_size'])
-        num_hid_layers.append(sample['num_hid_layers']['num_hid_layers'])
-        batch_size.append(sample['batch_size'])
+        timesteps_per_batch.append(sample['timesteps_per_batch'])
         vf_stepsize.append(sample['vf_stepsize'])
-"""
+        max_kl.append(sample['max_kl'])
+        gamma.append(sample['gamma'])
+        lam.append(sample['lam'])
+    return timesteps_per_batch, vf_stepsize, max_kl, gamma, lam
 
-sample = hyperopt.pyll.stochastic.sample(space)
-timesteps_per_batch = sample['timesteps_per_batch']
-vf_stepsize = sample['vf_stepsize']
-max_kl = sample['max_kl']
-gamma = sample['gamma']
-lam = sample['lam']
-
-
-env = gym.make('CartPole-v1')
-env = DummyVecEnv([lambda: env])
-
-model = TRPO(MlpPolicy, env, 
+def get_model(env, config_num=0):
+    model = TRPO(MlpPolicy, env, 
               verbose=1,
-              timesteps_per_batch=timesteps_per_batch,
-              vf_stepsize=vf_stepsize,
-              max_kl=max_kl,
-              gamma=gamma,
-              lam=lam
+              timesteps_per_batch=timesteps_per_batch[config_num-1],
+              vf_stepsize=vf_stepsize[config_num-1],
+              max_kl=max_kl[config_num-1],
+              gamma=gamma[config_num-1],
+              lam=lam[config_num-1]
             )
+    return model
 
-model.learn(total_timesteps=50000)
-model.save("trpo_cartpole")
 
-#del model # remove to demonstrate saving and loading
+if __name__ == "__main__":
 
-model = TRPO.load("trpo_cartpole")
+    num_configs = 7
+    timesteps_per_batch, vf_stepsize, max_kl, gamma, lam = sample(space, num_configs)
 
-obs = env.reset()
-while True:
-    action, _states = model.predict(obs)
-    obs, rewards, dones, info = env.step(action)
-    env.render()
+    for config_num in range(num_configs):
+        # Fixed random state
+        rand_state = np.random.RandomState(1).get_state()
+        np.random.set_state(rand_state)
+        seed = np.random.randint(1, 2**31 - 1)
+        tf.set_random_seed(seed)
+        random.seed(seed)
+
+
+        env = gym.make('CartPole-v1')
+        env = DummyVecEnv([lambda: env])
+
+        model = get_model(env, config_num)
+
+        model.learn(total_timesteps=10000)
+        model.save("trpo_cartpole")
+
+        del model # remove to demonstrate saving and loading
+
+        model = TRPO.load("trpo_cartpole", env)
+
+        obs = env.reset()
+
+        for i in range(50):
+            action, _states = model.predict(obs)
+            obs, rewards, dones, info = env.step(action)
+            #break
+            env.render()
+        env.close()
+
+
 """
-def main():
-    # Fixed random state
-    rand_state = np.random.RandomState(1).get_state()
-    np.random.set_state(rand_state)
-    seed = np.random.randint(1, 2**31 - 1)
-    tf.set_random_seed(seed)
-    random.seed(seed)
+    
 
     # Create CartPole environment
     env = gym.make('CartPole-v0')
@@ -261,4 +270,3 @@ print("Showing 30")
 for _ in range(30):
     reward = run_episode(env, policy_grad, value_grad, sess, True)
 """
-
