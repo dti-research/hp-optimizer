@@ -31,8 +31,4 @@ htmlcov
 
 junk
 src
-
-*.egg-info
-.cache
-
-MUJOCO_LOG.TXT
+>>>>>>> master
