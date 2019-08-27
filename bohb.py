@@ -16,7 +16,7 @@ import Pyro4
 
 import hpbandster.core.nameserver as hpns
 from hpbandster.core.worker import Worker
-from hpbandster.optimizers import HyperBand as opt
+from hpbandster.optimizers import BOHB as opt
 
 from stable_baselines.common.policies import MlpPolicy
 from stable_baselines.common.vec_env import DummyVecEnv
@@ -83,7 +83,7 @@ def run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, mi
     print("port: {}".format(ns_port))
     print("socket {}".format(socket))
 
-    HB = opt(configspace = space, run_id=run_id, eta=eta, min_budget=min_budget, max_budget=max_budget,
+    BOHB = opt(configspace = space, run_id=run_id, eta=eta, min_budget=min_budget, max_budget=max_budget,
              nameserver = ns_host,
              working_directory = dest_dir,
              host = ns_host,
@@ -92,10 +92,10 @@ def run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, mi
              result_logger=None
             )
 
-    result = HB.run(n_iterations=num_iterations) 
+    result = BOHB.run(n_iterations=num_iterations) 
 
     # shutdown the worker and the dispatcher
-    HB.shutdown(shutdown_workers=True)
+    BOHB.shutdown(shutdown_workers=True)
     NS.shutdown()
 
     # NEVER USED the number of iterations for the blackbox optimizers must be increased so they have comparable total budgets
