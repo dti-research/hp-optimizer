@@ -1,0 +1,52 @@
+{
+  "hyperparameters": [
+    {
+      "name": "gamma",
+      "type": "uniform_float",
+      "log": false,
+      "lower": -1.5,
+      "upper": 0.992094305849579,
+      "default": -0.2539528471
+    },
+    {
+      "name": "lam",
+      "type": "uniform_float",
+      "log": false,
+      "lower": -1.5,
+      "upper": 0.992094305849579,
+      "default": -0.2539528471
+    },
+    {
+      "name": "max_kl",
+      "type": "uniform_float",
+      "log": true,
+      "lower": 0.1767766952966369,
+      "upper": 0.7071067811865476,
+      "default": 0.3535533906
+    },
+    {
+      "name": "timesteps_per_batch",
+      "type": "categorical",
+      "choices": [
+        512,
+        1024,
+        2048,
+        4096,
+        8192
+      ],
+      "default": 512
+    },
+    {
+      "name": "vf_stepsize",
+      "type": "uniform_float",
+      "log": true,
+      "lower": 0.03125,
+      "upper": 0.25,
+      "default": 0.0883883476
+    }
+  ],
+  "conditions": [],
+  "forbiddens": [],
+  "python_module_version": "0.4.10",
+  "json_format_version": 0.1
+}
