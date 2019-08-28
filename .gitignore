@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 *.swp
 *.pyc
 *.pkl
@@ -36,3 +37,7 @@ src
 .cache
 
 MUJOCO_LOG.TXT
+||||||| merged common ancestors
+=======
+baselines/
+>>>>>>> master
