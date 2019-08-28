@@ -3,23 +3,23 @@ import numpy as np
 import random
 import gym
 import math
-import time
-import pickle
-import os
-import matplotlib.pyplot as plt
+import hyperopt.pyll.stochastic
 from stable_baselines.common.policies import MlpPolicy
 from stable_baselines.common.vec_env import DummyVecEnv
-from stable_baselines.results_plotter import load_results, ts2xy
-from stable_baselines.bench import Monitor
 from stable_baselines import TRPO
-
-from builtins import range
-import hyperopt.pyll.stochastic
-from hyperopt.base import miscs_to_idxs_vals
-from hyperopt import fmin, rand, hp, tpe, Trials, trials_from_docs, STATUS_OK
+from hyperopt import fmin, hp, tpe, Trials, STATUS_OK
 
 # Define the search space of each hyperparameter for the hyperparameter optimization
 def get_space():
+    """
+        Defines the search space to sample from for each hyperparameter for the hyperparameter 
+        optimization. Define all parameters to tune in the given model here. 
+        
+        Returns:
+        --------
+            dict-like expression graph consisting of nested function expressions for all 
+            hyperparameters to optimize.
+    """   
     space = {
             'timesteps_per_batch': hp.choice('timesteps_per_batch', [512, 1024, 2048, 4096, 8192]),
             'vf_stepsize': hp.loguniform('vf_stepsize', -5, -2),
@@ -30,19 +30,43 @@ def get_space():
     return space
 
 def objective(hyperparams):
-    global iteration
+    """
+        Defines the objective function that we want to minimize. 
+
+
+        Parameters:
+        --------
+            hyperparams: dictionary containing sampled values for a given hyperparameter configuration
+        
+        Returns:
+        --------
+            dictionary containing specified information. In this case, the loss, the current hyperparameter 
+            values, the iteration number, and a status flag, signalling if the run was successful
+    """   
+    global iteration #necessary with a global variable because of implementation from hyperopt. 
     iteration += 1
 
-    # Evaluate given model
     result = run_model(hyperparams, iteration)
+    loss = -result #transform to loss in order to minimize
 
-    # Transform to loss in order to minimize
-    loss = -result
-
-    # Return loss, current hyperparameter configuration, iteration and key indicating if evaluation was succesful
     return {'loss': loss, 'hyperparams': hyperparams, 'iteration': iteration, 'status': STATUS_OK}
 
 def run_model(hyperparams, iteration):
+    """
+       This is the most important function of this script. Initializes the environment in which the model is
+       evaluated, retrieves the values for the current hyperparameter configuration, initializes and trains
+       the given model. 
+
+
+        Parameters:
+        --------
+            hyperparams: dictionary containing sampled values for a given hyperparameter configuration
+            iteration: the iteration of running Bayesian optimization, i.e. configuration number
+        
+        Returns:
+        --------
+            A metric used to evaluate the performance of the current configuration. 
+    """ 
     # Fixed random state
     rand_state = np.random.RandomState(1).get_state()
     np.random.set_state(rand_state)
@@ -59,6 +83,7 @@ def run_model(hyperparams, iteration):
     for parameter_name in ['vf_stepsize', 'max_kl', 'gamma', 'lam']:
         hyperparams[parameter_name] = float(hyperparams[parameter_name])
 
+    # Initialize model
     model = TRPO(MlpPolicy, env, 
                  verbose=1,
                  timesteps_per_batch=hyperparams['timesteps_per_batch'],
@@ -75,7 +100,20 @@ def run_model(hyperparams, iteration):
     return result
 
 def evaluate(env, model):
-    """Return mean fitness (sum of episodic rewards) for the given model"""
+    """
+        Computes evaluation metric. In this case, the metric chosen is the mean of 
+        the sum of episodic rewards obtained during training
+        
+        
+        Parameters:
+        -----------
+            env: environment to evaluate model in
+            model: current model in a given state during training 
+        
+        Returns:
+        --------
+            mean of sum of episodic rewards for a full run of a given configuration
+    """
     episode_rewards = []
     for _ in range(10):
         reward_sum = 0
@@ -93,7 +131,7 @@ if __name__ == "__main__":
 
     global iteration
     iteration = 0
-    max_evaluations = 3
+    max_evaluations = 3 #maximum number of Bayesian optimization evaluations
     space = get_space()
 
     # Keep track of results
