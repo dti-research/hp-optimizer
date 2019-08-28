@@ -1,7 +1,15 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 baselines/
 ||||||| merged common ancestors
 =======
+||||||| merged common ancestors
+<<<<<<<<< Temporary merge branch 1
+baselines/
+||||||||| merged common ancestors
+=========
+=======
+>>>>>>> 0edba416b7f0abff218dbf3ee7cddcaa44563340
 *.swp
 *.pyc
 *.pkl
@@ -38,6 +46,3 @@ src
 
 *.egg-info
 .cache
-
-MUJOCO_LOG.TXT
->>>>>>> feat/bayopt
