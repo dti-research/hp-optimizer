@@ -8,7 +8,6 @@ import hyperopt.pyll.stochastic
 
 from stable_baselines.common.policies import MlpPolicy
 from stable_baselines.common.vec_env import DummyVecEnv
-from stable_baselines.results_plotter import ts2xy
 from stable_baselines import TRPO
 from hyperopt import hp
 
