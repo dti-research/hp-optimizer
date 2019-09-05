@@ -226,10 +226,10 @@ def run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, mi
     return(result)
 
 def get_space():
-        """
+    """
         Defines the search space to sample from for each hyperparameter for the hyperparameter 
         optimization. Define all parameters to tune in the given model here. 
-        
+      
         Returns:
         --------
             ConfigSpace object containing the search space
