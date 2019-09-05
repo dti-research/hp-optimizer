@@ -198,7 +198,6 @@ def run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, mi
     worker.run(background=True)
     print("host: {}".format(ns_host))
     print("port: {}".format(ns_port))
-    print("socket {}".format(socket))
 
     BOHB = opt(configspace = space, run_id=run_id, eta=eta, min_budget=min_budget, max_budget=max_budget,
              nameserver = ns_host,
