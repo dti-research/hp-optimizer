@@ -3,27 +3,28 @@ import numpy as np
 import random
 import gym
 import os
-import pickle
+# import pickle
 import hpbandster.core.nameserver as hpns
 import ConfigSpace as CS
 import ConfigSpace.hyperparameters as CSH
 
 from hpbandster.core.worker import Worker
-from hpbandster.optimizers import HyperBand as opt
+from hpbandster.optimizers import BOHB as opt
 from stable_baselines.common.policies import MlpPolicy
 from stable_baselines.common.vec_env import DummyVecEnv
 from stable_baselines import TRPO
 
 
 def extract_results_to_pickle(results_object):
-    """ Returns the best configurations over time,
-        but also returns the cummulative budget
+    """Returns the best configurations over time, but also returns the
+       cummulative budget
 
     Arguments:
         results_object {[type]} -- [description]
 
     Returns:
-        [type] -- [description]
+        dict -- dictionary with all the config IDs, the times the runs
+                finished, their respective budgets, and corresponding losses
     """
 
     all_runs = results_object.get_all_runs(only_largest_budget=False)
@@ -96,19 +97,19 @@ def extract_results_to_pickle(results_object):
 
 
 def run_model(config, budget):
-    """Initializes the environment in which the model is evaluated,
-       retrieves the values for the current hyperparameter
-       configuration, initializes and trains the given model.
+    """Initializes the environment in which the model is evaluated, retrieves
+       the values for the current hyperparameter configuration, initializes
+       and trains the given model.
 
     Arguments:
-        config {ConfigSpace} -- object containing sampled values
-                                for a given hyperparameter configuration
+        config {ConfigSpace} -- object containing sampled values for a given
+                                hyperparameter configuration
         budget {[type]} -- how much of a full run is currently used to
                            estimate mean loss
 
     Returns:
-        [type] -- A metric used to evaluate the performance of the
-                  current configuration.
+        [type] -- A metric used to evaluate the performance of the current
+                  configuration.
     """
 
     # Fixed random state
@@ -126,7 +127,6 @@ def run_model(config, budget):
     for parameter_name in ['vf_stepsize', 'max_kl', 'gamma', 'lam']:
         config[parameter_name] = float(config[parameter_name])
 
-    # Initialize model
     model = TRPO(MlpPolicy, env,
                  verbose=1,
                  timesteps_per_batch=config['timesteps_per_batch'],
@@ -196,36 +196,40 @@ def run_experiment(space,
     os.makedirs(work_dir, exist_ok=True)
     os.makedirs(dest_dir, exist_ok=True)
 
-    # setup a nameserver. Every run needs a nameserver.
-    # Here it will be started for the local machine with a random port
+    # setup a nameserver. Every run needs a nameserver. Here it will be
+    # started for the local machine with a random port
     NS = hpns.NameServer(run_id=run_id, host='localhost',
-                         port=0, working_directory=work_dir, nic_name=nic_name)
+                         port=0, working_directory=work_dir,
+                         nic_name=nic_name)
     ns_host, ns_port = NS.start()
 
     # start worker in the background
     worker.load_nameserver_credentials(work_dir)
     worker.run(background=True)
+    print("host: {}".format(ns_host))
+    print("port: {}".format(ns_port))
 
-    HB = opt(configspace=space,
-             run_id=run_id,
-             eta=eta,
-             min_budget=min_budget,
-             max_budget=max_budget,
-             nameserver=ns_host,
-             working_directory=dest_dir,
-             host=ns_host,
-             nameserver_port=ns_port,
-             ping_interval=3600,
-             result_logger=None
-             )
+    BOHB = opt(configspace=space,
+               run_id=run_id,
+               eta=eta,
+               min_budget=min_budget,
+               max_budget=max_budget,
+               nameserver=ns_host,
+               working_directory=dest_dir,
+               host=ns_host,
+               nameserver_port=ns_port,
+               ping_interval=3600,
+               result_logger=None
+               )
 
-    result = HB.run(n_iterations=num_iterations)
+    result = BOHB.run(n_iterations=num_iterations)
 
     # shutdown the worker and the dispatcher
-    HB.shutdown(shutdown_workers=True)
+    BOHB.shutdown(shutdown_workers=True)
     NS.shutdown()
 
-    with open(os.path.join(dest_dir, '{}_run_{}.pkl'
+    """
+    h open(os.path.join(dest_dir, '{}_run_{}.pkl'
                            .format(method, run_id)), 'wb') as fh:
         pickle.dump(extract_results_to_pickle(result), fh)
 
@@ -233,18 +237,20 @@ def run_experiment(space,
         with open(os.path.join(dest_dir, '{}_full_run_{}.pkl'
                                .format(method, run_id)), 'wb') as fh:
             pickle.dump(extract_results_to_pickle(result), fh)
-
+    """
     # in case one wants to inspect the complete run
     return(result)
 
 
 def get_space():
-    """ Defines the search space to sample from for each hyperparameter for
-        the hyperparameter optimization. Define all parameters to tune in the
-        given model here.
+    """
+        Defines the search space to sample from for each hyperparameter
+        for the hyperparameter optimization. Define all parameters to tune
+        in the given model here.
 
-    Returns:
-        ConfigSpace -- object containing the search space
+        Returns:
+        --------
+            ConfigSpace object containing the search space
     """
     space = CS.ConfigurationSpace()
     timesteps_per_batch = CSH.CategoricalHyperparameter(
@@ -268,18 +274,22 @@ def get_space():
 
 
 def evaluate(env, model):
-    """Computes evaluation metric. In this case, the metric chosen is the mean
-       of the sum of episodic rewards obtained during training
-
-    Arguments:
-        env {[type]} -- environment to evaluate model in
-        model {[type]} -- current model in a given state during training
-
-    Returns:
-        [type] -- mean of sum of episodic rewards for a full run of a given
-                  configuration
     """
+        Computes evaluation metric. In this case, the metric chosen is the
+        mean of the sum of episodic rewards obtained during training
 
+
+        Parameters:
+        -----------
+            env: environment to evaluate model in
+            model: current model in a given state during training
+
+        Returns:
+        --------
+            mean of sum of episodic rewards for a full run of a given
+            configuration
+    """
+    # Return mean fitness (sum of episodic rewards) for the given model
     episode_rewards = []
     for _ in range(10):
         reward_sum = 0
@@ -299,15 +309,16 @@ class MyWorker(Worker):
         super().__init__(*args, **kwargs)
 
     def compute(self, config, budget, **kwargs):
-        """This function defines the objective function that we want
-           to minimize
+        """
+        This function defines the objective function that we want to minimize
 
-        Arguments:
-            config {[type]} -- sampled configuration by the optimizer
-            budget {float} -- amount of time/epochs/etc. the model can use to
-                              train
+        Args:
+            config: sampled configuration by the optimizer
+            budget: (float) amount of time/epochs/etc. the model can use to
+                    train
+
         Returns:
-        dict -- dictionary with mandatory fields:
+            dictionary with mandatory fields:
                 'loss' (scalar)
                 'info' (dict) consisting of loss value and current
                 configuration
@@ -324,7 +335,7 @@ class MyWorker(Worker):
         loss = (-result).item()
 
         return({
-            'loss': loss,  # this is the a mandatory field to run hyperband
+            'loss': loss,  # this is the a mandatory field to run bohb
             # can be used for any user-defined information - also mandatory
             'info': {'loss': loss, 'config': config}
         })
@@ -332,8 +343,8 @@ class MyWorker(Worker):
     # Why is this function here, when we already received configs?
     @staticmethod
     def get_space():
-        # First, define the hyperparameters and add
-        # them to the configuration space
+        # First, define the hyperparameters and add them to the
+        # configuration space
         space = get_space()
         return space
 
@@ -345,7 +356,6 @@ if __name__ == "__main__":
     # i.e. when multiple. Here we pick '0'
     run_id = 0
     work_dir = "tmp/"
-    method = "hyperband"
     min_budget = 0.1
     max_budget = 1
     eta = 3
@@ -355,8 +365,16 @@ if __name__ == "__main__":
     worker = MyWorker(run_id=run_id)
 
     # run experiment
-    result = run_experiment(space, num_iterations, nic_name,
-                            run_id, work_dir, worker, min_budget,
-                            max_budget, eta, dest_dir, store_all_runs=False)
+    result = run_experiment(space,
+                            num_iterations,
+                            nic_name,
+                            run_id,
+                            work_dir,
+                            worker,
+                            min_budget,
+                            max_budget,
+                            eta,
+                            dest_dir,
+                            store_all_runs=False)
 
     print("Result: {} ".format(result))

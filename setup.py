@@ -9,7 +9,7 @@
 import io
 from setuptools import setup
 
-from hp-optimizer import __version__
+from hp_optimizer import __version__
 version = __version__
 
 
@@ -22,11 +22,11 @@ with io.open('requirements.txt') as requirements_file:
 """
 
 requirements = [
-    
+
 ]
 
 setup(
-    name='hp-optimizer',
+    name='hp_optimizer',
     version=version,
     description=('A package to automatically optimize hyper-parameters '
                  'of machine learning (ML) techniques.'),
@@ -35,9 +35,9 @@ setup(
     author_email='nily@dti.dk',
     url='https://github.com/dti-research/hp-optimizer',
     packages=[
-        'hp-optimizer',
+        'hp_optimizer',
     ],
-    package_dir={'hp-optimizer': 'hp-optimizer'},
+    package_dir={'hp_optimizer': 'hp_optimizer'},
     include_package_data=True,
     python_requires='>=3.6.*',
     install_requires=requirements,

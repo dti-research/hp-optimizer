@@ -17,3 +17,10 @@ pip install -e .
 # Install developer dependencies
 pip install -r requirements-dev.txt
 ```
+
+Make sure that you'll install the pre-commit hooks
+
+```bash
+cd hp-optimizer
+pre-commit install
+```
