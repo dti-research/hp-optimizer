@@ -8,13 +8,49 @@ import pickle
 import hpbandster.core.nameserver as hpns
 import ConfigSpace as CS
 import ConfigSpace.hyperparameters as CSH
-from ConfigSpace.read_and_write import json
 
+from ConfigSpace.read_and_write import json
 from hpbandster.core.worker import Worker
+import hpbandster.visualization as hpvis
 from hpbandster.optimizers import HyperBand as opt
 from stable_baselines.common.policies import MlpPolicy
 from stable_baselines.common.vec_env import DummyVecEnv
 from stable_baselines import TRPO
+
+def run_hyperband_opt(env, num_configs,algorithm, space):
+    dest_dir = "results/"
+    run_id = 0 # Every run has to have a unique (at runtime) id. for concurrent runs, i.e. when multiple. Here we pick '0'
+    work_dir="tmp/"
+    min_budget = 4 
+    max_budget = 16 
+    eta = 4
+    num_iterations =num_configs #number of Hyperband iterations performed.
+    nic_name='lo'
+
+    worker = MyWorker(run_id=run_id)
+
+    # run experiment
+    result, loss = run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, min_budget, max_budget, eta, dest_dir, store_all_runs=False)
+    
+    id2config = result.get_id2config_mapping()
+    incumbent = result.get_incumbent_id()
+    all_runs = result.get_all_runs()
+    lcs = result.get_learning_curves()
+
+    #hpvis.interactive_HBS_plot(lcs, tool_tip_strings=hpvis.default_tool_tips(result, lcs))
+
+    #print('Best found configuration:', id2config[incumbent]['config'])
+    #print('Best loss: ', loss)
+    #print('Best found configuration:', id2config[incumbent]['config_info'])
+    #print('A total of %i unique configurations where sampled.' % len(id2config.keys()))
+    #print('A total of %i runs where executed.' % len(result.get_all_runs()))
+    #print('Total budget corresponds to %.1f full function evaluations.'%(sum([r.budget for r in all_runs])/max_budget))
+    #print('Total budget corresponds to %.1f full function evaluations.'%(sum([r.budget for r in all_runs])/max_budget))
+    #print('The run took  %.1f seconds to complete.'%(all_runs[-1].time_stamps['finished'] - all_runs[0].time_stamps['started']))
+
+
+    best = -loss   
+    return best
 
 def extract_results_to_pickle(results_object):
 	"""
@@ -139,7 +175,7 @@ def run_model(config, budget):
                 )
 
     total_timesteps = 10000 
-    budget_steps = int(total_timesteps*budget) #I am not sure this is the right way to do it
+    budget_steps = int(total_timesteps/budget) #I am not sure this is the right way to do it
     model.learn(total_timesteps=budget_steps)
         
     result = evaluate(env, model)
@@ -214,38 +250,19 @@ def run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, mi
     HB.shutdown(shutdown_workers=True)
     NS.shutdown()
 
-    with open(os.path.join(dest_dir, '{}_run_{}.pkl'.format(method, run_id)), 'wb') as fh:
+    with open(os.path.join(dest_dir, '{}_run_{}.pkl'.format("hyperband", run_id)), 'wb') as fh:
         pickle.dump(extract_results_to_pickle(result), fh)
     
     if store_all_runs:
-        with open(os.path.join(dest_dir, '{}_full_run_{}.pkl'.format(method, run_id)), 'wb') as fh:
+        with open(os.path.join(dest_dir, '{}_full_run_{}.pkl'.format("hyperband", run_id)), 'wb') as fh:
             pickle.dump(extract_results_to_pickle(result), fh)
     
+    pickle_info = pickle.load(open((os.path.join(dest_dir, '{}_run_{}.pkl'.format("hyperband", run_id))), 'rb'))
+    #print("pickle\n\n {}".format(pickle_info))
+    best_loss = min(pickle_info['losses'])
+
     # in case one wants to inspect the complete run
-    return(result)
-
-def get_space():
-    """
-        Defines the search space to sample from for each hyperparameter for the hyperparameter 
-        optimization. Define all parameters to tune in the given model here. 
-        
-        Returns:
-        --------
-            ConfigSpace object containing the search space
-    """
-    space = CS.ConfigurationSpace()
-    timesteps_per_batch=CSH.CategoricalHyperparameter('timesteps_per_batch', [512, 1024, 2048, 4096, 8192])
-    vf_stepsize=CSH.UniformFloatHyperparameter('vf_stepsize', lower=2**-5, upper=2**-2, log=True)
-    max_kl=CSH.UniformFloatHyperparameter('max_kl', lower=2**-2.5, upper=2**-0.5, log=True)
-    gamma=CSH.UniformFloatHyperparameter('gamma', lower=(1-(1/((10**(-1))*4))), upper=(1-(1/((10**(1.5))*4))))
-    lam=CSH.UniformFloatHyperparameter('lam', lower=(1-(1/((10**(-1))*4))), upper=(1-(1/((10**(1.5))*4))))
-
-    space.add_hyperparameters([timesteps_per_batch, vf_stepsize, max_kl, gamma, lam])
-
-    # Store the defined configuration space to a json file
-    #with open('configspace.json', 'w') as fh:
-    #    fh.write(json.write(space))
-    return space
+    return(result, best_loss)
 
 def evaluate(env, model):
     """
@@ -312,28 +329,15 @@ class MyWorker(Worker):
     @staticmethod
     def get_space(): #Why is this function here, when we already received configs?
         # First, define the hyperparameters and add them to the configuration space
-        space = get_space()
+        space = CS.ConfigurationSpace()
+        timesteps_per_batch=CSH.CategoricalHyperparameter('timesteps_per_batch', [512, 1024, 2048, 4096, 8192])
+        vf_stepsize=CSH.UniformFloatHyperparameter('vf_stepsize', lower=2**-5, upper=2**-2, log=True)
+        max_kl=CSH.UniformFloatHyperparameter('max_kl', lower=2**-2.5, upper=2**-0.5, log=True)
+        gamma=CSH.UniformFloatHyperparameter('gamma', lower=(1-(1/((10**(-1))*4))), upper=(1-(1/((10**(1.5))*4))))
+        lam=CSH.UniformFloatHyperparameter('lam', lower=(1-(1/((10**(-1))*4))), upper=(1-(1/((10**(1.5))*4))))
+
+        space.add_hyperparameters([timesteps_per_batch, vf_stepsize, max_kl, gamma, lam])
         return space
-
-
-if __name__ == "__main__":
-    space = get_space()
-    dest_dir = "results/"
-    run_id = 0 # Every run has to have a unique (at runtime) id. for concurrent runs, i.e. when multiple. Here we pick '0'
-    work_dir="tmp/"
-    method ="hyperband"
-    min_budget = 0.1 
-    max_budget = 1 
-    eta = 3
-    num_iterations = 16 #number of Hyperband iterations performed.
-    nic_name='lo'
-
-    worker = MyWorker(run_id=run_id)
-
-    # run experiment
-    result = run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, min_budget, max_budget, eta, dest_dir, store_all_runs=False)
-
-    print("Result: {} ".format(result))
 
 
 

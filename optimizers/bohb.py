@@ -16,6 +16,38 @@ from stable_baselines.common.policies import MlpPolicy
 from stable_baselines.common.vec_env import DummyVecEnv
 from stable_baselines import TRPO
 
+def run_bohb_opt(env, num_configs,algorithm, space):
+    dest_dir = "results/"
+    run_id = 0 # Every run has to have a unique (at runtime) id. for concurrent runs, i.e. when multiple. Here we pick '0'
+    work_dir="tmp/"
+    min_budget = 4
+    max_budget = 16 
+    eta = 4
+    num_iterations = num_configs #number of Hyperband iterations performed.
+    nic_name='lo'
+
+    worker = MyWorker(run_id=run_id)
+
+    # run experiment
+    result, loss = run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, min_budget, max_budget, eta, dest_dir, store_all_runs=False)
+
+    id2config = result.get_id2config_mapping()
+    incumbent = result.get_incumbent_id()
+    all_runs = result.get_all_runs()
+
+    #print('Best found configuration:', id2config[incumbent]['config'])
+    #print('Best loss: ', loss)
+    #print('Best found configuration:', id2config[incumbent]['config_info'])
+    #print('A total of %i unique configurations where sampled.' % len(id2config.keys()))
+    #print('A total of %i runs where executed.' % len(result.get_all_runs()))
+    #print('Total budget corresponds to %.1f full function evaluations.'%(sum([r.budget for r in all_runs])/max_budget))
+    #print('Total budget corresponds to %.1f full function evaluations.'%(sum([r.budget for r in all_runs])/max_budget))
+    #print('The run took  %.1f seconds to complete.'%(all_runs[-1].time_stamps['finished'] - all_runs[0].time_stamps['started']))
+
+    best = -loss
+    return best
+
+
 def extract_results_to_pickle(results_object):
 	"""
 		Returns the best configurations over time, but also returns the cummulative budget
@@ -138,7 +170,7 @@ def run_model(config, budget):
                 )
 
     total_timesteps = 10000 
-    budget_steps = int(total_timesteps*budget)  #I am not sure this is the right way to do it
+    budget_steps = int(total_timesteps/budget)  #I am not sure this is the right way to do it
     model.learn(total_timesteps=budget_steps)
         
     result = evaluate(env, model)
@@ -214,15 +246,18 @@ def run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, mi
     BOHB.shutdown(shutdown_workers=True)
     NS.shutdown()
 
-    with open(os.path.join(dest_dir, '{}_run_{}.pkl'.format(method, run_id)), 'wb') as fh:
+    with open(os.path.join(dest_dir, '{}_run_{}.pkl'.format('bohb', run_id)), 'wb') as fh:
         pickle.dump(extract_results_to_pickle(result), fh)
     
     if store_all_runs:
-        with open(os.path.join(dest_dir, '{}_full_run_{}.pkl'.format(method, run_id)), 'wb') as fh:
+        with open(os.path.join(dest_dir, '{}_full_run_{}.pkl'.format('bohb', run_id)), 'wb') as fh:
             pickle.dump(extract_results_to_pickle(result), fh)
+
+    pickle_info = pickle.load(open((os.path.join(dest_dir, '{}_run_{}.pkl'.format("bohb", run_id))), 'rb'))
+    best_loss = min(pickle_info['losses'])
     
     # in case one wants to inspect the complete run
-    return(result)
+    return(result, best_loss)
 
 def get_space():
     """
@@ -315,26 +350,5 @@ class MyWorker(Worker):
         # First, define the hyperparameters and add them to the configuration space
         space = get_space()
         return space
-
-
-
-if __name__ == "__main__":
-    space = get_space()
-    dest_dir = "results/"
-    run_id = 0 # Every run has to have a unique (at runtime) id. for concurrent runs, i.e. when multiple. Here we pick '0'
-    work_dir="tmp/"
-    min_budget = 0.1
-    max_budget = 1 
-    eta = 3
-    num_iterations = 16 #number of Hyperband iterations performed.
-    nic_name='lo'
-
-    worker = MyWorker(run_id=run_id)
-
-    # run experiment
-    result = run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, min_budget, max_budget, eta, dest_dir, store_all_runs=False)
-
-    print("Result: {} ".format(result))
-
 
 
