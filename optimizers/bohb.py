@@ -1,21 +1,13 @@
 
-import numpy as np
-import random
-import gym
-import math
 import os
 import pickle
+import time
 import hpbandster.core.nameserver as hpns
-import ConfigSpace as CS
-import ConfigSpace.hyperparameters as CSH
-from ConfigSpace.read_and_write import json
-from optimizers.utils import set_seed, get_env, get_model
+import hpbandster.visualization as hpvis
 
+from optimizers.utils import set_seed, get_model, evaluate
 from hpbandster.core.worker import Worker
 from hpbandster.optimizers import BOHB as opt
-from stable_baselines.common.policies import MlpPolicy
-from stable_baselines.common.vec_env import DummyVecEnv
-from stable_baselines import TRPO
 
 def run_bohb_opt(env, method, num_configs, algorithm, space, total_timesteps, min_budget, max_budget, eta):
     total_time_spent = 0
@@ -240,57 +232,6 @@ def run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, mi
     
     # in case one wants to inspect the complete run
     return(result, best_loss)
-
-def get_space():
-    """
-        Defines the search space to sample from for each hyperparameter for the hyperparameter 
-        optimization. Define all parameters to tune in the given model here. 
-      
-        Returns:
-        --------
-            ConfigSpace object containing the search space
-    """
-    space = CS.ConfigurationSpace()
-    timesteps_per_batch=CSH.CategoricalHyperparameter('timesteps_per_batch', [512, 1024, 2048, 4096, 8192])
-    vf_stepsize=CSH.UniformFloatHyperparameter('vf_stepsize', lower=2**-5, upper=2**-2, log=True)
-    max_kl=CSH.UniformFloatHyperparameter('max_kl', lower=2**-2.5, upper=2**-0.5, log=True)
-    gamma=CSH.UniformFloatHyperparameter('gamma', lower=(1-(1/((10**(-1))*4))), upper=(1-(1/((10**(1.5))*4))))
-    lam=CSH.UniformFloatHyperparameter('lam', lower=(1-(1/((10**(-1))*4))), upper=(1-(1/((10**(1.5))*4))))
-
-    space.add_hyperparameters([timesteps_per_batch, vf_stepsize, max_kl, gamma, lam])
-
-    # Store the defined configuration space to a json file
-    #with open('configspace.json', 'w') as fh:
-    #    fh.write(json.write(space))
-    return space
-
-def evaluate(env, model):
-    """
-        Computes evaluation metric. In this case, the metric chosen is the mean of 
-        the sum of episodic rewards obtained during training
-        
-        
-        Parameters:
-        -----------
-            env: environment to evaluate model in
-            model: current model in a given state during training 
-        
-        Returns:
-        --------
-            mean of sum of episodic rewards for a full run of a given configuration
-    """
-    #Return mean fitness (sum of episodic rewards) for the given model
-    episode_rewards = []
-    for _ in range(10):
-        reward_sum = 0
-        done = False
-        obs = env.reset()
-        while not done:
-            action, _states = model.predict(obs)
-            obs, reward, done, info = env.step(action)
-            reward_sum += reward
-        episode_rewards.append(reward_sum)
-    return np.mean(episode_rewards)
 
 
 class MyWorker(Worker):

@@ -1,22 +1,12 @@
-import tensorflow as tf
-import numpy as np
-import random
-import gym
-import math
 import os
 import pickle
+import time
 import hpbandster.core.nameserver as hpns
-import ConfigSpace as CS
-import ConfigSpace.hyperparameters as CSH
-
-from ConfigSpace.read_and_write import json
-from hpbandster.core.worker import Worker
 import hpbandster.visualization as hpvis
+
+from hpbandster.core.worker import Worker
 from hpbandster.optimizers import HyperBand as opt
-from stable_baselines.common.policies import MlpPolicy
-from stable_baselines.common.vec_env import DummyVecEnv
-from stable_baselines import TRPO
-from optimizers.utils import get_model, set_seed, evaluate #, get_space
+from optimizers.utils import get_model, set_seed, evaluate 
 
 def run_hyperband_opt(env, method, num_configs, algorithm, space, total_timesteps, min_budget, max_budget, eta):
     total_time_spent = 0
