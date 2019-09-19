@@ -1,8 +1,11 @@
 import hyperopt.pyll.stochastic
 from optimizers.utils import set_seed, get_model, evaluate
 import numpy as np
+import time
 
 def run_random_search(env, method, num_configs, algorithm, space, total_timesteps):
+    total_time_spent = 0
+    start_time = time.time()
     set_seed()
     samples = sample(space, num_configs) 
     config_evals = [] #store result metric after training of each config
@@ -26,6 +29,9 @@ def run_random_search(env, method, num_configs, algorithm, space, total_timestep
         config_evals.append([config_num, result])
 
     best = max(config_evals, key=lambda x: x[1])
+    end_time = time.time()
+    total_time_spent = end_time - start_time
+    print("\n\ntotal optimizing time: {} s\n\n".format(total_time_spent))
     return int(best[1])
 
 def sample(space, num_configs):

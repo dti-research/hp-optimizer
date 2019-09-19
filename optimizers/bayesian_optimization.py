@@ -1,8 +1,10 @@
 from hyperopt import fmin, tpe, Trials, STATUS_OK
 from optimizers.utils import set_seed, get_model, evaluate
+import time
 
 def run_bayesian_opt(env, method, num_configs, algorithm, space, total_timesteps):
-    
+    total_time_spent = 0
+    start_time = time.time()
     global iteration
     iteration = 0
 
@@ -97,6 +99,9 @@ def run_bayesian_opt(env, method, num_configs, algorithm, space, total_timesteps
     #print("\ntrials info: {}\n".format(bayes_trials.trials)) #prints index for timesteps_per_batch
     #print("\nbest model: {}\n".format(best))
     #print("\ntrials: {}\n".format(bayes_trials.best_trial['result']['loss']))
+    end_time = time.time()
+    total_time_spent = end_time - start_time
+    print("\n\ntotal optimizing time: {} s\n\n".format(total_time_spent))
     return -int(bayes_trials.best_trial['result']['loss'])
 
 

@@ -18,6 +18,9 @@ from stable_baselines.common.vec_env import DummyVecEnv
 from stable_baselines import TRPO
 
 def run_bohb_opt(env, method, num_configs, algorithm, space, total_timesteps, min_budget, max_budget, eta):
+    total_time_spent = 0
+    start_time = time.time()
+
     dest_dir = "results/"
     run_id = 0 # Every run has to have a unique (at runtime) id. for concurrent runs, i.e. when multiple. Here we pick '0'
     work_dir="tmp/"
@@ -43,6 +46,9 @@ def run_bohb_opt(env, method, num_configs, algorithm, space, total_timesteps, mi
     #print('The run took  %.1f seconds to complete.'%(all_runs[-1].time_stamps['finished'] - all_runs[0].time_stamps['started']))
 
     best = -loss
+    end_time = time.time()
+    total_time_spent = end_time - start_time
+    print("\n\ntotal optimizing time: {} s\n\n".format(total_time_spent))
     return best
 
 
