@@ -16,18 +16,16 @@ from hpbandster.optimizers import HyperBand as opt
 from stable_baselines.common.policies import MlpPolicy
 from stable_baselines.common.vec_env import DummyVecEnv
 from stable_baselines import TRPO
+from optimizers.utils import get_model, set_seed, evaluate #, get_space
 
-def run_hyperband_opt(env, num_configs,algorithm, space):
+def run_hyperband_opt(env, method, num_configs, algorithm, space, total_timesteps, min_budget, max_budget, eta):
     dest_dir = "results/"
     run_id = 0 # Every run has to have a unique (at runtime) id. for concurrent runs, i.e. when multiple. Here we pick '0'
     work_dir="tmp/"
-    min_budget = 4 
-    max_budget = 16 
-    eta = 4
     num_iterations =num_configs #number of Hyperband iterations performed.
     nic_name='lo'
 
-    worker = MyWorker(run_id=run_id)
+    worker = MyWorker(env, algorithm, method, total_timesteps, run_id=run_id)
 
     # run experiment
     result, loss = run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, min_budget, max_budget, eta, dest_dir, store_all_runs=False)
@@ -38,7 +36,6 @@ def run_hyperband_opt(env, num_configs,algorithm, space):
     lcs = result.get_learning_curves()
 
     #hpvis.interactive_HBS_plot(lcs, tool_tip_strings=hpvis.default_tool_tips(result, lcs))
-
     #print('Best found configuration:', id2config[incumbent]['config'])
     #print('Best loss: ', loss)
     #print('Best found configuration:', id2config[incumbent]['config_info'])
@@ -48,9 +45,8 @@ def run_hyperband_opt(env, num_configs,algorithm, space):
     #print('Total budget corresponds to %.1f full function evaluations.'%(sum([r.budget for r in all_runs])/max_budget))
     #print('The run took  %.1f seconds to complete.'%(all_runs[-1].time_stamps['finished'] - all_runs[0].time_stamps['started']))
 
-
     best = -loss   
-    return best
+    return int(best)
 
 def extract_results_to_pickle(results_object):
 	"""
@@ -132,50 +128,31 @@ def extract_results_to_pickle(results_object):
 	
 	return (return_dict)
 
-def run_model(config, budget):
+def run_model(config, budget, env, method, algorithm, total_timesteps):
     """
-       Initializes the environment in which the model is evaluated, retrieves the values 
-       for the current hyperparameter configuration, initializes and trains
-       the given model. 
+       Initializes the environment in which the model is evaluated, retrieves 
+       the values for the current hyperparameter configuration, initializes and 
+       trains the given model. 
 
 
         Parameters:
         --------
-            config: ConfigSpace object containing sampled values for a given hyperparameter configuration
-            budget: how much of a full run is currently used to estimate mean loss
+            config: ConfigSpace object containing sampled values for a given 
+            hyperparameter configuration.
+            budget: how much of a full run is currently used to estimate mean 
+            loss.
         
         Returns:
         --------
             A metric used to evaluate the performance of the current configuration. 
     """
     # Fixed random state
-    rand_state = np.random.RandomState(1).get_state()
-    np.random.set_state(rand_state)
-    seed = np.random.randint(1, 2**31 - 1)
-    tf.set_random_seed(seed)
-    random.seed(seed)
-
-
-    env = gym.make('CartPole-v1')
-    env = DummyVecEnv([lambda: env])
-
-    # Get all the current hyperparameter values
-    config['timesteps_per_batch'] = config['timesteps_per_batch']
-    for parameter_name in ['vf_stepsize', 'max_kl', 'gamma', 'lam']:
-        config[parameter_name] = float(config[parameter_name])
+    set_seed()
 
     # Initialize model
-    model = TRPO(MlpPolicy, env, 
-                 verbose=1,
-                 timesteps_per_batch=config['timesteps_per_batch'],
-                 vf_stepsize=config['vf_stepsize'],
-                 max_kl=config['max_kl'],
-                 gamma=config['gamma'],
-                 lam=config['lam']
-                )
-
-    total_timesteps = 10000 
-    budget_steps = int(total_timesteps/budget) #I am not sure this is the right way to do it
+    model = get_model(method, algorithm, env, config)
+    print("\nbudget: {} \n\n".format(budget))
+    budget_steps = int(total_timesteps*budget) #not sure if correct or not
     model.learn(total_timesteps=budget_steps)
         
     result = evaluate(env, model)
@@ -264,38 +241,14 @@ def run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, mi
     # in case one wants to inspect the complete run
     return(result, best_loss)
 
-def evaluate(env, model):
-    """
-        Computes evaluation metric. In this case, the metric chosen is the mean of 
-        the sum of episodic rewards obtained during training
-        
-        
-        Parameters:
-        -----------
-            env: environment to evaluate model in
-            model: current model in a given state during training 
-        
-        Returns:
-        --------
-            mean of sum of episodic rewards for a full run of a given configuration
-    """
-    episode_rewards = []
-    for _ in range(10):
-        reward_sum = 0
-        done = False
-        obs = env.reset()
-        while not done:
-            action, _states = model.predict(obs)
-            obs, reward, done, info = env.step(action)
-            reward_sum += reward
-        episode_rewards.append(reward_sum)
-    return np.mean(episode_rewards)
-
-
 class MyWorker(Worker):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, env, algorithm, method, total_timesteps, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.env = env
+        self.algorithm = algorithm
+        self.method = method
+        self.total_timesteps = total_timesteps
 
     def compute(self, config, budget, **kwargs):
         """
@@ -311,33 +264,16 @@ class MyWorker(Worker):
                 'info' (dict) consisting of loss value and current configuration
         """
 
-        # Get all the current hyperparameter values
-        config['timesteps_per_batch'] = config['timesteps_per_batch']
-        for parameter_name in ['vf_stepsize', 'max_kl', 'gamma', 'lam']:
-            config[parameter_name] = float(config[parameter_name])
-
-        result = run_model(config, budget)
+        result = run_model(config, budget, self.env, self.method, self.algorithm, self.total_timesteps)
 
         # Transform to loss in order to minimize
         loss = (-result).item()
 
         return({
-                    'loss': loss,  # this is the a mandatory field to run hyperband
+                    'loss': loss,  # this is the a mandatory field to run bohb
                     'info': {'loss': loss, 'config': config} # can be used for any user-defined information - also mandatory
                 })
 
-    @staticmethod
-    def get_space(): #Why is this function here, when we already received configs?
-        # First, define the hyperparameters and add them to the configuration space
-        space = CS.ConfigurationSpace()
-        timesteps_per_batch=CSH.CategoricalHyperparameter('timesteps_per_batch', [512, 1024, 2048, 4096, 8192])
-        vf_stepsize=CSH.UniformFloatHyperparameter('vf_stepsize', lower=2**-5, upper=2**-2, log=True)
-        max_kl=CSH.UniformFloatHyperparameter('max_kl', lower=2**-2.5, upper=2**-0.5, log=True)
-        gamma=CSH.UniformFloatHyperparameter('gamma', lower=(1-(1/((10**(-1))*4))), upper=(1-(1/((10**(1.5))*4))))
-        lam=CSH.UniformFloatHyperparameter('lam', lower=(1-(1/((10**(-1))*4))), upper=(1-(1/((10**(1.5))*4))))
-
-        space.add_hyperparameters([timesteps_per_batch, vf_stepsize, max_kl, gamma, lam])
-        return space
 
 
 

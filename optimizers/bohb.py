@@ -1,4 +1,4 @@
-import tensorflow as tf
+
 import numpy as np
 import random
 import gym
@@ -9,6 +9,7 @@ import hpbandster.core.nameserver as hpns
 import ConfigSpace as CS
 import ConfigSpace.hyperparameters as CSH
 from ConfigSpace.read_and_write import json
+from optimizers.utils import set_seed, get_env, get_model
 
 from hpbandster.core.worker import Worker
 from hpbandster.optimizers import BOHB as opt
@@ -16,17 +17,14 @@ from stable_baselines.common.policies import MlpPolicy
 from stable_baselines.common.vec_env import DummyVecEnv
 from stable_baselines import TRPO
 
-def run_bohb_opt(env, num_configs,algorithm, space):
+def run_bohb_opt(env, method, num_configs, algorithm, space, total_timesteps, min_budget, max_budget, eta):
     dest_dir = "results/"
     run_id = 0 # Every run has to have a unique (at runtime) id. for concurrent runs, i.e. when multiple. Here we pick '0'
     work_dir="tmp/"
-    min_budget = 4
-    max_budget = 16 
-    eta = 4
     num_iterations = num_configs #number of Hyperband iterations performed.
     nic_name='lo'
 
-    worker = MyWorker(run_id=run_id)
+    worker = MyWorker(env, algorithm, method, total_timesteps, run_id=run_id)
 
     # run experiment
     result, loss = run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, min_budget, max_budget, eta, dest_dir, store_all_runs=False)
@@ -128,7 +126,7 @@ def extract_results_to_pickle(results_object):
 	
 	return (return_dict)
 
-def run_model(config, budget):
+def run_model(config, budget, env, method, algorithm, total_timesteps):
     """
        Initializes the environment in which the model is evaluated, retrieves the values 
        for the current hyperparameter configuration, initializes and trains
@@ -145,32 +143,10 @@ def run_model(config, budget):
             A metric used to evaluate the performance of the current configuration. 
     """
     # Fixed random state
-    rand_state = np.random.RandomState(1).get_state()
-    np.random.set_state(rand_state)
-    seed = np.random.randint(1, 2**31 - 1)
-    tf.set_random_seed(seed)
-    random.seed(seed)
+    set_seed()
 
-
-    env = gym.make('CartPole-v1')
-    env = DummyVecEnv([lambda: env])
-
-    # Get all the current hyperparameter values
-    config['timesteps_per_batch'] = config['timesteps_per_batch']
-    for parameter_name in ['vf_stepsize', 'max_kl', 'gamma', 'lam']:
-        config[parameter_name] = float(config[parameter_name])
-
-    model = TRPO(MlpPolicy, env, 
-                 verbose=1,
-                 timesteps_per_batch=config['timesteps_per_batch'],
-                 vf_stepsize=config['vf_stepsize'],
-                 max_kl=config['max_kl'],
-                 gamma=config['gamma'],
-                 lam=config['lam']
-                )
-
-    total_timesteps = 10000 
-    budget_steps = int(total_timesteps/budget)  #I am not sure this is the right way to do it
+    model = get_model(method, algorithm, env, config)
+    budget_steps = int(total_timesteps*budget)  #I am not sure this is the right way to do it
     model.learn(total_timesteps=budget_steps)
         
     result = evaluate(env, model)
@@ -313,8 +289,12 @@ def evaluate(env, model):
 
 class MyWorker(Worker):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, env, algorithm, method, total_timesteps, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.env = env
+        self.algorithm = algorithm
+        self.method = method
+        self.total_timesteps = total_timesteps
 
     def compute(self, config, budget, **kwargs):
         """
@@ -330,12 +310,7 @@ class MyWorker(Worker):
                 'info' (dict) consisting of loss value and current configuration
         """
 
-        # Get all the current hyperparameter values
-        config['timesteps_per_batch'] = config['timesteps_per_batch']
-        for parameter_name in ['vf_stepsize', 'max_kl', 'gamma', 'lam']:
-            config[parameter_name] = float(config[parameter_name])
-
-        result = run_model(config, budget)
+        result = run_model(config, budget, self.env, self.method, self.algorithm, self.total_timesteps)
 
         # Transform to loss in order to minimize
         loss = (-result).item()
@@ -344,11 +319,4 @@ class MyWorker(Worker):
                     'loss': loss,  # this is the a mandatory field to run bohb
                     'info': {'loss': loss, 'config': config} # can be used for any user-defined information - also mandatory
                 })
-
-    @staticmethod
-    def get_space(): #Why is this function here, when we already received configs?
-        # First, define the hyperparameters and add them to the configuration space
-        space = get_space()
-        return space
-
 

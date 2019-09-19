@@ -1,18 +1,58 @@
+import tensorflow as tf
+import random
 import gym
 import numpy as np
 import ConfigSpace as CS
 import ConfigSpace.hyperparameters as CSH
 
 from hyperopt import hp
-
+from stable_baselines.common.policies import MlpPolicy
+from stable_baselines import TRPO
 from stable_baselines.common.vec_env import DummyVecEnv
 
-from optimizers.random_search import run_random_search
-from optimizers.bayesian_optimization import run_bayesian_opt
-from optimizers.hyperband import run_hyperband_opt
-from optimizers.bohb import run_bohb_opt
+def get_model(method, algorithm, env, config):
+    """
+        Initializes the model to be evaluated, with specified hyperparameter values from a given 
+        configuration. In this case we want to run the cartpole environment using TRPO with a 
+        multilayer perceptron as the function approximator.
+        
+        
+        Parameters:
+        -----------
+            samples: nested lists containing all sampled hyperparameter configurations and the 
+                     corresponding values of each hyperparameter.
+            env: environment to evaluate model in
+            config_num: number of the configuration sampled to evaluate
+        
+        Returns:
+        --------
+            model: initialized model with specified settings ready to be trained
+        
+        TODO: Add more algorithms
+    """ 
+    if algorithm == "trpo":
+        model = TRPO(MlpPolicy, env, 
+             verbose=1,
+             timesteps_per_batch=config['timesteps_per_batch'],
+             vf_stepsize=config['vf_stepsize'],
+             max_kl=config['max_kl'],
+             gamma=config['gamma'],
+             lam=config['lam']
+            )
 
-def get_env(name):
+    return model
+
+def set_seed(): #set_seed(config_num) to be able to generate and log specific seeds
+    seed = (2**10)-534
+    np.random.seed(seed)
+#    seed = np.random.randint(1,2**31-1)
+    tf.set_random_seed(seed)
+    random.seed(seed)
+    rand_state = np.random.RandomState(seed).get_state()
+    np.random.set_state(rand_state)
+
+
+def get_env(name): #Make an overwrite of this as user of library?
     """
         Initializes the environment to be evaluated. Compatible with openAI gym envs.
         
@@ -25,7 +65,7 @@ def get_env(name):
         --------
             env: initialized environment to train agent in 
     """
-    env = gym.make('CartPole-v1') #initialize environment
+    env = gym.make(name) #initialize environment
     env = DummyVecEnv([lambda: env])
     return env
 
@@ -59,17 +99,30 @@ def get_space(method):
         space.add_hyperparameters([timesteps_per_batch, vf_stepsize, max_kl, gamma, lam])
     return space
 
-def run_optimizer(env, method, num_configs, algorithm, space):
-    if method == "random":
-        best = run_random_search(env, num_configs, algorithm, space)
 
-    elif method == "bayesian":
-        best = run_bayesian_opt(env, num_configs, algorithm, space)
-    
-    elif method == "hyperband": # Should it be possible to choose budget here?
-        best = run_hyperband_opt(env, num_configs,algorithm, space)
-
-    elif method == "bohb": 
-        best = run_bohb_opt(env, num_configs,algorithm, space)
+def evaluate(env, model):
+    """
+        Computes evaluation metric. In this case, the metric chosen is the mean 
+        of the sum of episodic rewards obtained during training
         
-    return best
+        
+        Parameters:
+        -----------
+            env: environment to evaluate model in
+            model: current model in a given state during training 
+        
+        Returns:
+        --------
+            mean of sum of episodic rewards for a full run of a given 
+            configuration
+    """ 
+    reward_sum = 0
+    done = False
+    obs = env.reset()
+    while not done:
+        action, _states = model.predict(obs)
+        obs, reward, done, info = env.step(action)
+        reward_sum += reward
+    return reward_sum
+
+
