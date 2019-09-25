@@ -5,13 +5,16 @@ import time
 import hpbandster.core.nameserver as hpns
 import hpbandster.visualization as hpvis
 
-from optimizers.utils import set_seed, get_model, evaluate
+from main import get_env, set_seed, evaluate, run_model 
 from hpbandster.core.worker import Worker
 from hpbandster.optimizers import BOHB as opt
 
-def run_bohb_opt(env, method, num_configs, algorithm, space, total_timesteps, min_budget, max_budget, eta):
+def run_bohb_opt(method, num_configs, algorithm, space, total_timesteps, min_budget, max_budget, eta, log_dir):
     total_time_spent = 0
     start_time = time.time()
+    global seeds, count
+    seeds = []
+    count = 0
 
     dest_dir = "results/"
     run_id = 0 # Every run has to have a unique (at runtime) id. for concurrent runs, i.e. when multiple. Here we pick '0'
@@ -19,7 +22,7 @@ def run_bohb_opt(env, method, num_configs, algorithm, space, total_timesteps, mi
     num_iterations = num_configs #number of Hyperband iterations performed.
     nic_name='lo'
 
-    worker = MyWorker(env, algorithm, method, total_timesteps, run_id=run_id)
+    worker = MyWorker(log_dir, algorithm, method, total_timesteps, run_id=run_id)
 
     # run experiment
     result, loss = run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, min_budget, max_budget, eta, dest_dir, store_all_runs=False)
@@ -27,7 +30,9 @@ def run_bohb_opt(env, method, num_configs, algorithm, space, total_timesteps, mi
     id2config = result.get_id2config_mapping()
     incumbent = result.get_incumbent_id()
     all_runs = result.get_all_runs()
+    lcs = result.get_learning_curves()
 
+    #hpvis.interactive_HBS_plot(lcs, tool_tip_strings=hpvis.default_tool_tips(result, lcs))
     #print('Best found configuration:', id2config[incumbent]['config'])
     #print('Best loss: ', loss)
     #print('Best found configuration:', id2config[incumbent]['config_info'])
@@ -41,7 +46,7 @@ def run_bohb_opt(env, method, num_configs, algorithm, space, total_timesteps, mi
     end_time = time.time()
     total_time_spent = end_time - start_time
     print("\n\ntotal optimizing time: {} s\n\n".format(total_time_spent))
-    return best
+    return int(best), result.get_id2config_mapping(), total_time_spent, seeds
 
 
 def extract_results_to_pickle(results_object):
@@ -124,7 +129,7 @@ def extract_results_to_pickle(results_object):
 	
 	return (return_dict)
 
-def run_model(config, budget, env, method, algorithm, total_timesteps):
+def run_current(config, budget, log_dir, method, algorithm, total_timesteps):
     """
        Initializes the environment in which the model is evaluated, retrieves the values 
        for the current hyperparameter configuration, initializes and trains
@@ -140,13 +145,17 @@ def run_model(config, budget, env, method, algorithm, total_timesteps):
         --------
             A metric used to evaluate the performance of the current configuration. 
     """
-    # Fixed random state
-    set_seed()
+    global seeds, count
+    seed = set_seed()
+    seeds.append(seed)
+    env = get_env(log_dir)
 
-    model = get_model(method, algorithm, env, config)
+
+
     budget_steps = int(total_timesteps*budget)  #I am not sure this is the right way to do it
-    model.learn(total_timesteps=budget_steps)
-        
+    model = run_model(method, algorithm, env, config, budget_steps, seed, count)
+    model.save(log_dir + "bohb_" + str(count))
+    count += 1
     result = evaluate(env, model)
     return result
 
@@ -202,8 +211,6 @@ def run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, mi
     # start worker in the background
     worker.load_nameserver_credentials(work_dir)
     worker.run(background=True)
-    print("host: {}".format(ns_host))
-    print("port: {}".format(ns_port))
 
     BOHB = opt(configspace = space, run_id=run_id, eta=eta, min_budget=min_budget, max_budget=max_budget,
              nameserver = ns_host,
@@ -236,9 +243,9 @@ def run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, mi
 
 class MyWorker(Worker):
 
-    def __init__(self, env, algorithm, method, total_timesteps, *args, **kwargs):
+    def __init__(self, log_dir, algorithm, method, total_timesteps, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.env = env
+        self.log_dir = log_dir
         self.algorithm = algorithm
         self.method = method
         self.total_timesteps = total_timesteps
@@ -257,10 +264,10 @@ class MyWorker(Worker):
                 'info' (dict) consisting of loss value and current configuration
         """
 
-        result = run_model(config, budget, self.env, self.method, self.algorithm, self.total_timesteps)
+        result = run_current(config, budget, self.log_dir, self.method, self.algorithm, self.total_timesteps)
 
         # Transform to loss in order to minimize
-        loss = (-result).item()
+        loss = -result
 
         return({
                     'loss': loss,  # this is the a mandatory field to run bohb
