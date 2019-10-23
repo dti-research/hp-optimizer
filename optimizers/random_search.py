@@ -13,9 +13,8 @@ def run_random_search(method, num_configs, algorithm, space, total_timesteps,log
     for config_num in range(num_configs):
         seed = set_seed()
         seeds.append(seed)
-        env = get_env(log_dir)
-        
-         
+        env = get_env(log_dir, algorithm)
+        """ 
         while True:
             try:
                 config = samples[config_num]
@@ -28,9 +27,9 @@ def run_random_search(method, num_configs, algorithm, space, total_timesteps,log
             except:
                 print("Run failed, trying again...")
                 samples[config_num] = hyperopt.pyll.stochastic.sample(space)
-        
-#        config = samples[config_num]
-#        model = run_model(method, algorithm, env, config,total_timesteps, seed, config_num)
+        """
+        config = samples[config_num]
+        model = run_model(method, algorithm, env, config,total_timesteps, seed, config_num)
             
         model.save(log_dir + "random_search_" + str(config_num)) 
 

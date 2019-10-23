@@ -4,10 +4,13 @@ import pickle
 import time
 import hpbandster.core.nameserver as hpns
 import hpbandster.visualization as hpvis
+import ConfigSpace as CS
+import ConfigSpace.hyperparameters as CSH
 
 from main import get_env, set_seed, evaluate, run_model 
 from hpbandster.core.worker import Worker
 from hpbandster.optimizers import BOHB as opt
+
 
 def run_bohb_opt(method, num_configs, algorithm, space, total_timesteps, min_budget, max_budget, eta, log_dir):
     total_time_spent = 0
@@ -23,6 +26,7 @@ def run_bohb_opt(method, num_configs, algorithm, space, total_timesteps, min_bud
     nic_name='lo'
 
     worker = MyWorker(log_dir, algorithm, method, total_timesteps, run_id=run_id)
+    space = transform_space(space)
 
     # run experiment
     result, loss = run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, min_budget, max_budget, eta, dest_dir, store_all_runs=False)
@@ -148,7 +152,7 @@ def run_current(config, budget, log_dir, method, algorithm, total_timesteps):
     global seeds, count
     seed = set_seed()
     seeds.append(seed)
-    env = get_env(log_dir)
+    env = get_env(log_dir, algorithm)
 
 
 
@@ -240,6 +244,46 @@ def run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, mi
     # in case one wants to inspect the complete run
     return(result, best_loss)
 
+def transform_space(space):
+    param = 0
+    temp_space = CS.ConfigurationSpace()
+    for _,v in space.items():
+        obj = str(v).replace(" ", "").replace("\n", "").replace("Literal","")
+        obj = obj.replace("0switch", "").replace("0float", "")
+        obj = obj.replace("1hyperopt_param", "").replace("randint", "{randint}")
+        obj = obj.replace("loguniform", "{loguniform}")
+        obj = obj.replace("quniform","{quniform}").replace("pos_args", "{[]}")
+        obj = obj.replace("3uniform", "{uniform}")
+        
+        tl = []
+        while len(obj) != 0:
+            name = obj[obj.index('{')+1:obj.index('}')]
+            obj = obj.replace(obj[0:obj.index('}')+1],"")
+            tl.append(name)
+        
+        
+        if tl[1] == "uniform":
+            param = CSH.UniformFloatHyperparameter(tl[0],lower=float(tl[2]), upper=float(tl[3]))
+
+        elif tl[1] == "quniform":
+            param = CSH.UniformIntegerHyperparameter(tl[0],lower=float(tl[2]), upper=float(tl[3]))
+        
+        elif tl[1] == "loguniform":
+            param = CSH.UniformFloatHyperparameter(tl[0],lower=10**(float(tl[2])), upper=10**(float(tl[3])),log=True)
+            
+        elif tl[1] == "randint":
+            choices = []
+            for num in range(3,len(tl)-1):
+                # if '[]' occurs, make next two vals in paranthesis, such as (-2,2)
+                if tl[num] == '[]':
+                    choice = '(' + tl[num+1]+','+tl[num+2]+')'
+                    choices.append(choice)
+                else:
+                    choices.append(tl[num])
+            param = CSH.CategoricalHyperparameter(tl[0], choices)  
+    
+        temp_space.add_hyperparameter(param)
+    return temp_space
 
 class MyWorker(Worker):
 

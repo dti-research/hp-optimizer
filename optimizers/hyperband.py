@@ -1,8 +1,10 @@
 import os
 import pickle
 import time
+import ConfigSpace as CS
 import hpbandster.core.nameserver as hpns
 import hpbandster.visualization as hpvis
+import ConfigSpace.hyperparameters as CSH
 
 from main import get_env, set_seed, evaluate, run_model 
 from hpbandster.core.worker import Worker
@@ -15,6 +17,8 @@ def run_hyperband_opt(method, num_configs, algorithm, space, total_timesteps, mi
     seeds = []
     count = 0
 
+    #space = transform_space(space)
+
     dest_dir = "results/"
     run_id = 0 # Every run has to have a unique (at runtime) id. for concurrent runs, i.e. when multiple. Here we pick '0'
     work_dir="tmp/"
@@ -22,7 +26,7 @@ def run_hyperband_opt(method, num_configs, algorithm, space, total_timesteps, mi
     nic_name='lo'
 
     worker = MyWorker(log_dir, algorithm, method, total_timesteps, run_id=run_id)
-
+    space = transform_space(space)
     # run experiment
     result, loss = run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, min_budget, max_budget, eta, dest_dir, store_all_runs=False)
     
@@ -147,10 +151,11 @@ def run_current(config, budget, log_dir, method, algorithm, total_timesteps):
     global seeds, count
     seed = set_seed()
     seeds.append(seed)
-    env = get_env(log_dir)
+    env = get_env(log_dir, algorithm)
 
     # Initialize model
     budget_steps = int(total_timesteps*budget) #not sure if correct or not
+    print("BUDGET {}\n\n".format(budget))
     model = run_model(method, algorithm, env, config, budget_steps, seed, count)
     model.save(log_dir + "hyperband_" + str(count))
     count += 1
@@ -241,6 +246,52 @@ def run_experiment(space, num_iterations, nic_name, run_id, work_dir, worker, mi
     # in case one wants to inspect the complete run
     return(result, best_loss)
 
+
+def transform_space(space):
+    param = 0
+    temp_space = CS.ConfigurationSpace()
+    for _,v in space.items():
+        obj = str(v).replace(" ", "").replace("\n", "").replace("Literal","")
+        obj = obj.replace("0switch", "").replace("0float", "")
+        obj = obj.replace("1hyperopt_param", "").replace("randint", "{randint}")
+        obj = obj.replace("loguniform", "{loguniform}")
+        obj = obj.replace("quniform","{quniform}").replace("pos_args", "{[]}")
+        obj = obj.replace("3uniform", "{uniform}")
+        
+        tl = []
+        while len(obj) != 0:
+            name = obj[obj.index('{')+1:obj.index('}')]
+            #print("value: {} \n\n".format(name))
+            obj = obj.replace(obj[0:obj.index('}')+1],"")
+            tl.append(name)
+        
+        if tl[1] == "uniform":
+            param = CSH.UniformFloatHyperparameter(tl[0],lower=float(tl[2]), upper=float(tl[3]))
+
+        elif tl[1] == "quniform":
+            param = CSH.UniformIntegerHyperparameter(tl[0],lower=float(tl[2]), upper=float(tl[3]))
+        
+        elif tl[1] == "loguniform":
+            param = CSH.UniformFloatHyperparameter(tl[0],lower=10**(float(tl[2])), upper=10**(float(tl[3])),log=True)
+            
+        elif tl[1] == "randint":
+            choices = []
+            num = 3
+            while num < len(tl)-1:
+                # if '[]' occurs, make next two vals in paranthesis, such as (-2,2)
+                if tl[num] == '[]':
+                    l = [float(tl[num+1]),float(tl[num+2])]
+                    choice = tuple(l)
+                    choices.append(choice)
+                    num +=3
+                else:
+                    num += 1
+                    choices.append(tl[num])
+            param = CSH.CategoricalHyperparameter(tl[0], choices)
+        temp_space.add_hyperparameter(param)
+    return temp_space
+    
+
 class MyWorker(Worker):
 
     def __init__(self, log_dir, algorithm, method, total_timesteps, *args, **kwargs):
@@ -266,6 +317,9 @@ class MyWorker(Worker):
         result = run_current(config, budget, self.log_dir, self.method, self.algorithm, self.total_timesteps)
         # Transform to loss in order to minimize
         loss = -result
+
+        print(loss)
+        print(type(loss))
 
         return({
                     'loss': loss,  # this is the a mandatory field to run bohb

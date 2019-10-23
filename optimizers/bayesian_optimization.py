@@ -63,7 +63,7 @@ def run_bayesian_opt(method, num_configs, algorithm, space, total_timesteps, log
                 A metric used to evaluate the performance of the current 
                 configuration. 
         """ 
-        env = get_env(log_dir)
+        env = get_env(log_dir, algorithm)
         fails = 0
         count = iteration
 

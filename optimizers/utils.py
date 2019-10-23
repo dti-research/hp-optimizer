@@ -1,3 +1,5 @@
+import numpy as np
+
 def run_optimizer(method, num_configs, algorithm, space, total_timesteps, min_budget, max_budget, eta, log_dir):
     if method == "random":
         from optimizers.random_search import run_random_search
@@ -30,3 +32,17 @@ def run_optimizer(method, num_configs, algorithm, space, total_timesteps, min_bu
                            )
         
     return best
+
+def get_action_noise(env, config, ntypes):
+    n_actions= env.action_space.shape[-1]
+    action_noise = None
+    if type(config['action_noise']) is str:
+        stringlist = ["None", "NormalActionNoise", "OrnsteinUhlenbeckActionNoise"]
+        for ntype in stringlist:
+            if config['action_noise'] == str(ntype): #of some reason I must cast
+                action_noise = ntypes[stringlist.index(ntype)]
+
+    if action_noise != None:
+        action_noise = action_noise(mean=np.zeros(n_actions),sigma=float(0.5)*np.ones(n_actions))
+
+    return action_noise
